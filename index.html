@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Snake Móvil</title>
+<style>
+  :root { --bg:#0b1220; --panel:#111827; --fg:#e5e7eb; --green:#22c55e; --green2:#16a34a; --red:#ef4444; }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui, -apple-system, Arial;}
+  .wrap{display:grid;grid-template-rows:auto 1fr auto;gap:8px;height:100%;padding:10px;max-width:520px;margin:0 auto;}
+  header,footer{color:#9ca3af;text-align:center}
+  .stage{position:relative;display:grid;place-items:center;background:#0a1020;border:1px solid #1f2937;border-radius:16px;overflow:hidden;touch-action:none}
+  canvas{width:100%;height:auto;background:#0a0f1a;image-rendering:pixelated}
+  .overlay{position:absolute;inset:0;display:grid;place-items:center;background:#0008}
+  .card{background:#0b1220; border:1px solid #223047; border-radius:14px; padding:14px; text-align:center}
+  button{background:#334155;color:var(--fg);border:1px solid #1f2937;border-radius:12px;padding:12px 16px;font-size:16px;touch-action:manipulation}
+  .hud{display:flex;justify-content:space-between;align-items:center}
+  .hud .v{font-weight:700}
+  /* D-Pad */
+  .dpad{position:relative;height:160px;margin:6px auto 0;width:260px;touch-action:manipulation}
+  .dpad button{position:absolute;width:78px;height:78px;font-size:18px;border-radius:14px}
+  .up{left:91px;top:0}
+  .down{left:91px;bottom:0}
+  .left{left:0;top:41px}
+  .right{right:0;top:41px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><b>🐍 Snake Móvil</b></header>
+  <div class="hud"><div>Puntos: <span class="v" id="score">0</span></div><div>Mejor: <span class="v" id="best">0</span></div></div>
+  <div class="stage" id="stage">
+    <canvas id="c" width="360" height="360" aria-label="Juego Snake"></canvas>
+    <div class="overlay" id="ol">
+      <div class="card">
+        <h3>Listo para jugar</h3>
+        <p>Toca comenzar. Puedes usar los botones o deslizar.</p>
+        <button id="btnStart">▶️ Iniciar</button>
+      </div>
+    </div>
+  </div>
+  <div class="dpad">
+    <button class="up">⬆️</button>
+    <button class="left">⬅️</button>
+    <button class="right">➡️</button>
+    <button class="down">⬇️</button>
+  </div>
+  <footer>Optimizado para Android (swipe + botones). © Tu Snake</footer>
+</div>
+<script>
+  // Parámetros
+  const N=24, START_MS=140, MIN_MS=70;
+  const c=document.getElementById('c'), x=c.getContext('2d');
+  const scoreEl=document.getElementById('score'), bestEl=document.getElementById('best');
+  const stage=document.getElementById('stage');
+  const overlay=document.getElementById('ol'), btnStart=document.getElementById('btnStart');
+  let best = Number(localStorage.getItem('snake-best-mobile')||0); bestEl.textContent=best;
+
+  let snake,dir,next,food,pts,ms,timer=null,paused=false,started=false;
+
+  function reset(){
+    const mid=Math.floor(N/2);
+    snake=[{x:mid, y:mid}];
+    dir={x:1,y:0}; // por defecto hacia la derecha (se mueve sin tocar)
+    next={...dir};
+    food=placeFood(); pts=0; ms=START_MS; paused=false;
+    scoreEl.textContent='0'; draw();
+  }
+
+  function placeFood(){
+    while(true){
+      const fx=Math.floor(Math.random()*N), fy=Math.floor(Math.random()*N);
+      if(!snake.some(s=>s.x===fx&&s.y===fy)) return {x:fx,y:fy};
+    }
+  }
+
+  function setDir(nx,ny){ if(dir.x+nx===0 && dir.y+ny===0) return; next={x:nx,y:ny}; }
+
+  function step(){
+    if(paused || !started) return;
+    dir=next;
+    const head=snake[0], nh={x:head.x+dir.x, y:head.y+dir.y};
+    if(nh.x<0||nh.y<0||nh.x>=N||nh.y>=N) return over();
+    if(snake.some(s=>s.x===nh.x&&s.y===nh.y)) return over();
+    snake.unshift(nh);
+    if(nh.x===food.x&&nh.y===food.y){
+      pts++; scoreEl.textContent=pts;
+      if(pts>best){ best=pts; bestEl.textContent=best; localStorage.setItem('snake-best-mobile',best); }
+      food=placeFood(); if(ms>MIN_MS) ms-=5; try{navigator.vibrate&&navigator.vibrate(35);}catch(e){}
+    } else snake.pop();
+    draw();
+  }
+
+  function draw(){
+    const cell=Math.floor(c.width/N);
+    x.clearRect(0,0,c.width,c.height);
+    // food
+    x.fillStyle='#ef4444'; x.fillRect(food.x*cell,food.y*cell,cell,cell);
+    // snake
+    for(let i=0;i<snake.length;i++){
+      x.fillStyle= i? '#16a34a':'#22c55e';
+      const s=snake[i]; x.fillRect(s.x*cell,s.y*cell,cell,cell);
+    }
+  }
+
+  function loop(){ step(); timer=setTimeout(()=>requestAnimationFrame(loop),ms); }
+  function start(){ if(started) return; started=true; overlay.style.display='none'; reset(); loop(); }
+  function restart(){ clearTimeout(timer); timer=null; started=false; overlay.style.display='grid'; }
+
+  // Botón iniciar y toque en el área
+  btnStart.addEventListener('click', start);
+  stage.addEventListener('touchstart', () => { if(!started) start(); }, {passive:true});
+
+  // D-Pad botones
+  document.querySelector('.up').onclick = () => setDir(0,-1);
+  document.querySelector('.down').onclick = () => setDir(0,1);
+  document.querySelector('.left').onclick = () => setDir(-1,0);
+  document.querySelector('.right').onclick = () => setDir(1,0);
+
+  // Swipe continuo
+  let t0=null;
+  stage.addEventListener('touchstart',e=>{ const t=e.changedTouches[0]; t0={x:t.clientX,y:t.clientY}; },{passive:true});
+  stage.addEventListener('touchmove',e=>{
+    if(!t0) return;
+    const t=e.changedTouches[0], dx=t.clientX-t0.x, dy=t.clientY-t0.y;
+    if(Math.abs(dx)>24 || Math.abs(dy)>24){
+      if(Math.abs(dx)>Math.abs(dy)) setDir(dx>0?1:-1,0);
+      else setDir(0, dy>0?1:-1);
+      t0={x:t.clientX,y:t.clientY};
+    }
+  },{passive:true});
+  stage.addEventListener('touchend',()=>{ t0=null; },{passive:true});
+
+  // Teclado por si lo abres en PC
+  window.addEventListener('keydown',e=>{
+    const k=e.key.toLowerCase();
+    if(k==='arrowup'||k==='w') setDir(0,-1);
+    else if(k==='arrowdown'||k==='s') setDir(0,1);
+    else if(k==='arrowleft'||k==='a') setDir(-1,0);
+    else if(k==='arrowright'||k==='d') setDir(1,0);
+    else if(k==='r') restart();
+  });
+
+  // Ajustar tamaño del canvas a ancho del contenedor
+  function fit(){ const w=stage.clientWidth; c.width=Math.min(420, w-16); c.height=c.width; draw(); }
+  addEventListener('resize', fit); new ResizeObserver(fit).observe(stage); fit();
+</script>
+</body>
+</html>
